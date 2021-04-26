@@ -1,3 +1,5 @@
+use crate::commands;
+
 enum Argument {
     Flag(String, u8),
     Command(String, u8),
@@ -10,20 +12,31 @@ pub fn parse(command: &str) {
     for (k, v) in raw.into_iter().enumerate() {
         data.push(is_param(k as u8, v))
     }
-    let _ctx = Context::new(data);
-    // Do something cool with the context here, like you could match it to a pattern to create a command setup
+    let ctx = Context::new(data);
+    commands::consume(ctx);
 }
 
+#[derive(Clone)]
 pub struct Context {
-    cmd: String,
-    subcommands: Vec<String>,
+    pub cmd: String,
+    pub subcommands: Vec<String>,
     flags: Vec<String>,
-    parameters: Vec<Parameter>,
+    pub(crate) parameters: Vec<Parameter>,
 }
 
-struct Parameter {
+#[derive(Clone)]
+pub struct Parameter {
     key: String,
     value: String,
+}
+
+impl Parameter {
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+    pub fn value(&self) -> &str {
+        &self.value
+    }
 }
 
 fn is_param(k: u8, v: &str) -> Argument {
@@ -32,7 +45,7 @@ fn is_param(k: u8, v: &str) -> Argument {
         "." => {
             let mut v_mut = String::from(v);
             v_mut = v_mut.replace(".", "");
-            let slices: Vec<&str> = v_mut.split(":").collect();
+            let slices: Vec<&str> = v_mut.split("~").collect();
             if slices.len() != 2 { panic!("Invalid command") } // Will panic for any text (\..*?\:{0,1}\s)
             Argument::AssociatedParameter(String::from(slices[0]), String::from(slices[1]), k)
         }
@@ -56,10 +69,30 @@ impl Context {
                         subcommands.push(String::from(value));
                     }
                 }
-                Argument::AssociatedParameter(key, value, _) =>  { parameters.push(Parameter {key: String::from(key), value: String::from(value)})}
+                Argument::AssociatedParameter(key, value, _) =>  {
+                    parameters.push(
+                        Parameter {
+                            key: String::from(key)
+                            .replace("\\w", " "),
+                            value: String::from(value)
+                            .replace("\\w", " ")
+                        }
+                    )
+                }
             }
         }
 
         Context { cmd: cmd.unwrap(), subcommands, parameters, flags } // Will panic for any text ((\.|\-).*\s)
+    }
+
+    pub fn get_param_from_key(&self, key: &str) -> Option<Parameter> {
+        let mut found: Option<Parameter> = None;
+        let params = self.parameters.clone();
+        for param in params {
+            if param.key == String::from(key) {
+                found = Some(param);
+            }
+        }
+        found
     }
 }
